@@ -18,6 +18,7 @@ from data_loader import (
     load_wareneinsatz,
     load_wareneingang,
     load_verkaufsmengen,
+    load_zutatenliste,
 )
 from metrics import build_daily_report, monthly_summary, weekly_summary
 from exports import build_excel_report, build_pdf_report
@@ -316,6 +317,21 @@ with st.expander("Zutaten verwalten"):
                 st.rerun()
             else:
                 st.warning("Name und Einheit sind Pflichtfelder.")
+
+    st.caption(
+        "Viele Zutaten auf einmal? Statt einzeln einzutippen, kannst du auch eine "
+        "Warenliste als CSV hochladen (Spalten: Name, Einheit, Einkaufspreis)."
+    )
+    zutatenliste_file = st.file_uploader(
+        "Zutatenliste hochladen (CSV)", type=["csv"], key="zutatenliste_upload"
+    )
+    if zutatenliste_file:
+        try:
+            storage.save_zutatenliste(load_zutatenliste(zutatenliste_file))
+            st.success("Zutatenliste importiert.")
+            st.rerun()
+        except ValueError as e:
+            st.error(str(e))
 
     if not zutaten_df.empty:
         st.dataframe(zutaten_df, use_container_width=True)

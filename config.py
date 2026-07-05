@@ -41,4 +41,5 @@ COLUMN_OVERRIDES = {
     "wareneinsatz": {},
     "wareneingang": {},
     "verkaufsmengen": {},
+    "zutatenliste": {},
 }

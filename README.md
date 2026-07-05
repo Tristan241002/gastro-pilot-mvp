@@ -102,7 +102,9 @@ geht (Schwund, großzügige Portionen, Fehlbuchungen o. Ä.) – auf Zutateneben
 als grobe Wareneinsatzquote:
 
 1. **Zutaten verwalten**: Rohstoffe anlegen (Name, Einheit wie kg/l/Stück, Einkaufspreis
-   pro Einheit).
+   pro Einheit) – entweder einzeln über das Formular, oder als Massen-Import: eine CSV
+   mit den Spalten Name, Einheit, Einkaufspreis hochladen (z. B. deine eigene Preisliste
+   oder eine Lieferanten-Warenliste). Beispiel dafür: `sample_data/zutatenliste_sample.csv`.
 2. **Rezepturen verwalten**: pro verkauftem Produkt hinterlegen, welche Zutaten in
    welcher Menge hineingehen (z. B. Cappuccino = 0,018 kg Kaffeebohnen + 0,15 l Milch).
    Der Produktname muss zu den Produktnamen aus dem Verkaufsmengen-Export passen.

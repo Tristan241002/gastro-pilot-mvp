@@ -27,6 +27,8 @@ MENGE_CANDIDATES = [
     "menge", "anzahl", "stückzahl", "stueckzahl", "verkaufte menge", "verkauft", "quantity",
 ]
 PREIS_CANDIDATES = ["preis", "gesamtpreis", "betrag", "kosten", "summe"]
+NAME_CANDIDATES = ["name", "zutat", "artikel", "bezeichnung", "rohstoff"]
+EINHEIT_CANDIDATES = ["einheit", "me", "mengeneinheit", "unit"]
 
 
 def _find_column(columns: list[str], candidates: list[str]) -> Optional[str]:
@@ -183,6 +185,30 @@ def load_wareneingang(path) -> pd.DataFrame:
         menge=("menge", "sum"), preis=("preis", "sum")
     )
     return out.sort_values(["datum", "zutat"]).reset_index(drop=True)
+
+
+def load_zutatenliste(path) -> pd.DataFrame:
+    """Lädt eine Zutaten-/Warenliste zum Massen-Import (z. B. eine eigene Preisliste oder
+    ein Export vom Lieferanten), statt jede Zutat einzeln im Dashboard einzutippen.
+
+    Erwartete Spalten (Namen werden automatisch erkannt): Name, Einheit, Einkaufspreis.
+
+    Rückgabe: DataFrame mit Spalten ['name', 'einheit', 'einkaufspreis_pro_einheit'],
+    doppelte Namen werden auf die letzte Zeile reduziert (spätere Zeile gewinnt).
+    """
+    df = _read_csv_flexible(path)
+    name_col = _resolve_column(df, "zutatenliste", "name", NAME_CANDIDATES)
+    einheit_col = _resolve_column(df, "zutatenliste", "einheit", EINHEIT_CANDIDATES)
+    preis_col = _resolve_column(df, "zutatenliste", "einkaufspreis", PREIS_CANDIDATES)
+
+    out = df[[name_col, einheit_col, preis_col]].copy()
+    out.columns = ["name", "einheit", "einkaufspreis_pro_einheit"]
+    out["name"] = out["name"].astype(str).str.strip()
+    out["einheit"] = out["einheit"].astype(str).str.strip()
+    out["einkaufspreis_pro_einheit"] = _to_number(out["einkaufspreis_pro_einheit"])
+    out = out.dropna(subset=["name"])
+    out = out.drop_duplicates(subset="name", keep="last")
+    return out.sort_values("name").reset_index(drop=True)
 
 
 def load_verkaufsmengen(path) -> pd.DataFrame:

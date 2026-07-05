@@ -234,6 +234,23 @@ def add_zutat(name: str, einheit: str, einkaufspreis_pro_einheit: float) -> None
         )
 
 
+def save_zutatenliste(df: pd.DataFrame) -> None:
+    """Legt mehrere Zutaten auf einmal an/aktualisiert sie (Massen-Import per CSV),
+    statt sie einzeln über das Formular einzutragen. Bestehende Zutaten mit gleichem
+    Namen werden überschrieben (Einheit + Preis)."""
+    if df.empty:
+        return
+    with _connect() as conn:
+        for _, row in df.iterrows():
+            conn.execute(
+                "INSERT INTO zutaten (name, einheit, einkaufspreis_pro_einheit) "
+                "VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
+                "einheit=excluded.einheit, "
+                "einkaufspreis_pro_einheit=excluded.einkaufspreis_pro_einheit",
+                (row["name"], row["einheit"], _to_sql_value(row["einkaufspreis_pro_einheit"])),
+            )
+
+
 def list_zutaten() -> pd.DataFrame:
     with _connect() as conn:
         return pd.read_sql("SELECT * FROM zutaten ORDER BY name", conn)
