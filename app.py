@@ -15,6 +15,7 @@ import streamlit as st
 from data_loader import load_orderbird, load_aplano, load_wareneinsatz
 from metrics import build_daily_report, monthly_summary, weekly_summary
 from exports import build_excel_report, build_pdf_report
+import storage
 from config import (
     FIXED_COSTS_MONTHLY,
     GESCHAEFTSFUEHRUNG,
@@ -22,11 +23,17 @@ from config import (
     WARENEINSATZQUOTE_WARNUNG,
 )
 
+storage.init_db()
+
 st.set_page_config(page_title="Gastro Pilot – MVP", layout="wide")
 st.title("Gastro Pilot – MVP-Cockpit")
 st.caption(
     "Kennzahlen-Zusammenführung aus Orderbird (Umsatz), Aplano (Personalkosten) "
     "und Wareneinsatz"
+)
+st.caption(
+    "Hochgeladene Daten werden lokal in `gastro_pilot.db` gespeichert – du musst nicht "
+    "bei jedem Start alles neu hochladen, nur neue Tage ergänzen."
 )
 
 col1, col2, col3 = st.columns(3)
@@ -48,16 +55,31 @@ with st.expander("Aktuelle Einstellungen (config.py)"):
     )
     st.write("Warnschwelle Personalkostenquote:", f"{PERSONALKOSTENQUOTE_WARNUNG:.0%}")
     st.write("Warnschwelle Wareneinsatzquote:", f"{WARENEINSATZQUOTE_WARNUNG:.0%}")
+    st.divider()
+    st.caption("Gespeicherte Daten (gastro_pilot.db) unwiderruflich löschen:")
+    zuruecksetzen_bestaetigt = st.checkbox("Ja, ich will alle gespeicherten Daten löschen")
+    if st.button("Gespeicherte Daten löschen", disabled=not zuruecksetzen_bestaetigt):
+        storage.reset_all()
+        st.success("Gespeicherte Daten wurden gelöscht.")
+        st.rerun()
 
-if orderbird_file and aplano_file:
-    try:
-        umsatz_df = load_orderbird(orderbird_file)
-        personal_df = load_aplano(aplano_file)
-        wareneinsatz_df = load_wareneinsatz(wareneinsatz_file) if wareneinsatz_file else None
-    except ValueError as e:
-        st.error(str(e))
-        st.stop()
+try:
+    if orderbird_file:
+        storage.save_umsatz(load_orderbird(orderbird_file))
+    if aplano_file:
+        storage.save_personal(load_aplano(aplano_file))
+    if wareneinsatz_file:
+        storage.save_wareneinsatz(load_wareneinsatz(wareneinsatz_file))
+except ValueError as e:
+    st.error(str(e))
+    st.stop()
 
+umsatz_df = storage.load_umsatz()
+personal_df = storage.load_personal()
+wareneinsatz_df = storage.load_wareneinsatz()
+wareneinsatz_df = wareneinsatz_df if not wareneinsatz_df.empty else None
+
+if not umsatz_df.empty and not personal_df.empty:
     daily = build_daily_report(umsatz_df, personal_df, wareneinsatz_df)
 
     k1, k2, k3, k4, k5 = st.columns(5)
@@ -90,7 +112,6 @@ if orderbird_file and aplano_file:
             f"{letzte['personalkosten_delta_vorwoche']:+.1%}"
             if pd.notna(letzte["personalkosten_delta_vorwoche"])
             else None,
-            delta_color="inverse",
         )
         vk3.metric(
             "Personalkostenquote diese Woche",
@@ -98,7 +119,6 @@ if orderbird_file and aplano_file:
             f"{letzte['personalkostenquote_delta_vorwoche'] * 100:+.1f} Pp"
             if pd.notna(letzte["personalkostenquote_delta_vorwoche"])
             else None,
-            delta_color="inverse",
         )
         st.dataframe(weekly, use_container_width=True)
     else:
@@ -175,8 +195,9 @@ if orderbird_file and aplano_file:
         )
 else:
     st.info(
-        "Bitte mindestens den Orderbird- und den Aplano-Export hochladen, um das "
-        "Dashboard zu sehen. Der Wareneinsatz-Export ist optional."
+        "Noch keine gespeicherten Daten vorhanden. Bitte mindestens den Orderbird- und "
+        "den Aplano-Export hochladen, um das Dashboard zu sehen. Der Wareneinsatz-Export "
+        "ist optional. Einmal hochgeladene Daten bleiben für künftige Starts gespeichert."
     )
     st.markdown(
         "Falls die Spalten deines Exports nicht automatisch erkannt werden, trage die "

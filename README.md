@@ -67,7 +67,26 @@ Unten im Dashboard gibt es zwei Download-Buttons:
 - **PDF**: kompakter Bericht mit Monatsübersicht und Vorwochenvergleich, z. B. zum
   Weiterleiten an den Steuerberater
 
-Beide werden erst erzeugt, wenn Orderbird- und Aplano-Datei hochgeladen sind.
+Beide werden erst erzeugt, wenn Daten vorhanden sind (aktuell hochgeladen oder aus
+`gastro_pilot.db` geladen).
+
+## Datenpersistenz (SQLite)
+
+Jeder hochgeladene Export wird automatisch in einer lokalen Datei `gastro_pilot.db`
+(liegt neben `app.py`) gespeichert. Beim nächsten Start musst du nicht alles neu
+hochladen – nur neue Tage ergänzen. Neue Uploads überschreiben nur die betroffenen
+Tage, ältere Tage bleiben erhalten.
+
+- Zum Löschen aller gespeicherten Daten: im Dashboard unter "Aktuelle Einstellungen
+  (config.py)" die Checkbox bestätigen und auf "Gespeicherte Daten löschen" klicken.
+- **Wichtig für Streamlit Cloud:** Dort ist das Dateisystem nicht dauerhaft – bei jedem
+  Neustart/Redeploy der App geht `gastro_pilot.db` verloren. Echte Persistenz über
+  Wochen hinweg funktioniert nur, wenn du die App lokal ausführst
+  (`streamlit run app.py` auf deinem eigenen Rechner).
+- Falls dein `Gastro Pilot`-Ordner über iCloud Drive/Dropbox synchronisiert wird und
+  beim Start ein "disk I/O error" auftaucht: das liegt an der Cloud-Synchronisation
+  des Ordners, nicht am Code. Lege den Ordner in diesem Fall lokal (nicht
+  cloud-synchronisiert) ab, oder schließe ihn von der Synchronisation aus.
 
 ## Dateien
 
@@ -76,6 +95,7 @@ Beide werden erst erzeugt, wenn Orderbird- und Aplano-Datei hochgeladen sind.
 | `data_loader.py` | Lädt und normalisiert die CSV-Exporte |
 | `metrics.py` | Berechnet Kennzahlen und Empfehlungen |
 | `exports.py` | Baut den Excel- und PDF-Export |
+| `storage.py` | Speichert/lädt Rohdaten aus `gastro_pilot.db` (SQLite) |
 | `app.py` | Streamlit-Dashboard (Oberfläche) |
 | `config.py` | Fixkosten, Schwellenwerte, Spalten-Overrides |
 | `test_run.py` | Prüft Loader + Metriken ohne Streamlit (`python3 test_run.py`) |
@@ -85,9 +105,8 @@ Beide werden erst erzeugt, wenn Orderbird- und Aplano-Datei hochgeladen sind.
 
 Sobald sich im eigenen Café zeigt, dass die Kennzahlen echten Mehrwert bringen:
 
-1. Datenpersistenz (SQLite statt Re-Upload bei jedem Start)
-2. Einstellungsbereich direkt im Dashboard (Fixkosten, Gehälter, Schwellenwerte ohne Code ändern)
-3. Chat-Funktion mit KI-Anbindung (z. B. Anthropic API), die Fragen zu den eigenen Zahlen
+1. Einstellungsbereich direkt im Dashboard (Fixkosten, Gehälter, Schwellenwerte ohne Code ändern)
+2. Chat-Funktion mit KI-Anbindung (z. B. Anthropic API), die Fragen zu den eigenen Zahlen
    beantwortet – Kernidee aus dem Konzeptdokument, Abschnitt 4.3
-4. Aplano Pro-Tarif (API-Schnittstelle) statt manuellem CSV-Export anbinden, danach bei
+3. Aplano Pro-Tarif (API-Schnittstelle) statt manuellem CSV-Export anbinden, danach bei
    orderbird wegen einer Partner-API anfragen (siehe Konzeptdokument, Abschnitt 5 und 9)
