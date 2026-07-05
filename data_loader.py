@@ -21,6 +21,12 @@ HOURS_CANDIDATES = ["stunden", "ist-stunden", "iststunden", "arbeitsstunden", "h
 COST_CANDIDATES = ["personalkosten", "lohnkosten", "kosten", "cost"]
 WAGE_CANDIDATES = ["stundenlohn", "lohn", "wage", "hourly rate", "hourlyrate"]
 WARENEINSATZ_CANDIDATES = ["wareneinsatz", "wareneinkauf", "warenkosten", "einkauf", "cogs"]
+ZUTAT_CANDIDATES = ["zutat", "rohstoff", "ingredient", "artikel", "wareneingang artikel"]
+PRODUKT_CANDIDATES = ["produkt", "artikel", "artikelname", "produktname", "item", "menuepunkt"]
+MENGE_CANDIDATES = [
+    "menge", "anzahl", "stückzahl", "stueckzahl", "verkaufte menge", "verkauft", "quantity",
+]
+PREIS_CANDIDATES = ["preis", "gesamtpreis", "betrag", "kosten", "summe"]
 
 
 def _find_column(columns: list[str], candidates: list[str]) -> Optional[str]:
@@ -148,3 +154,56 @@ def load_wareneinsatz(path) -> pd.DataFrame:
     out = out.dropna(subset=["datum"])
     out = out.groupby("datum", as_index=False)["wareneinsatz"].sum()
     return out.sort_values("datum").reset_index(drop=True)
+
+
+def load_wareneingang(path) -> pd.DataFrame:
+    """Lädt einen Wareneingang-Export/Manuell gepflegte CSV mit Lieferungen je Zutat
+    (z. B. abgetippt aus Lieferantenrechnungen).
+
+    Erwartete Spalten (Namen werden automatisch erkannt): Datum, Zutat, Menge, Preis
+    (Preis = Gesamtpreis der jeweiligen Lieferposition, nicht Einzelpreis).
+
+    Rückgabe: DataFrame mit Spalten ['datum', 'zutat', 'menge', 'preis'], je Tag und
+    Zutat aufsummiert (falls mehrere Lieferungen derselben Zutat am selben Tag erfasst wurden).
+    """
+    df = _read_csv_flexible(path)
+    date_col = _resolve_column(df, "wareneingang", "datum", DATE_CANDIDATES)
+    zutat_col = _resolve_column(df, "wareneingang", "zutat", ZUTAT_CANDIDATES)
+    menge_col = _resolve_column(df, "wareneingang", "menge", MENGE_CANDIDATES)
+    preis_col = _resolve_column(df, "wareneingang", "preis", PREIS_CANDIDATES)
+
+    out = df[[date_col, zutat_col, menge_col, preis_col]].copy()
+    out.columns = ["datum", "zutat", "menge", "preis"]
+    out["datum"] = pd.to_datetime(out["datum"], dayfirst=True, errors="coerce")
+    out["zutat"] = out["zutat"].astype(str).str.strip()
+    out["menge"] = _to_number(out["menge"])
+    out["preis"] = _to_number(out["preis"])
+    out = out.dropna(subset=["datum"])
+    out = out.groupby(["datum", "zutat"], as_index=False).agg(
+        menge=("menge", "sum"), preis=("preis", "sum")
+    )
+    return out.sort_values(["datum", "zutat"]).reset_index(drop=True)
+
+
+def load_verkaufsmengen(path) -> pd.DataFrame:
+    """Lädt die verkauften Stückzahlen je Produkt und Tag, z. B. aus Orderbirds
+    "Detaillierte Umsatzaufteilung" (MY orderbird → Berichte → Umsatzanalyse → Export als CSV).
+
+    Erwartete Spalten (Namen werden automatisch erkannt): Datum, Produkt, Menge.
+
+    Rückgabe: DataFrame mit Spalten ['datum', 'produkt', 'menge'], je Tag und Produkt
+    aufsummiert.
+    """
+    df = _read_csv_flexible(path)
+    date_col = _resolve_column(df, "verkaufsmengen", "datum", DATE_CANDIDATES)
+    produkt_col = _resolve_column(df, "verkaufsmengen", "produkt", PRODUKT_CANDIDATES)
+    menge_col = _resolve_column(df, "verkaufsmengen", "menge", MENGE_CANDIDATES)
+
+    out = df[[date_col, produkt_col, menge_col]].copy()
+    out.columns = ["datum", "produkt", "menge"]
+    out["datum"] = pd.to_datetime(out["datum"], dayfirst=True, errors="coerce")
+    out["produkt"] = out["produkt"].astype(str).str.strip()
+    out["menge"] = _to_number(out["menge"])
+    out = out.dropna(subset=["datum"])
+    out = out.groupby(["datum", "produkt"], as_index=False)["menge"].sum()
+    return out.sort_values(["datum", "produkt"]).reset_index(drop=True)

@@ -39,4 +39,6 @@ COLUMN_OVERRIDES = {
     "orderbird": {},
     "aplano": {},
     "wareneinsatz": {},
+    "wareneingang": {},
+    "verkaufsmengen": {},
 }

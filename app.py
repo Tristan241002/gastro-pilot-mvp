@@ -12,9 +12,16 @@ und regelbasierte Empfehlungen an.
 import pandas as pd
 import streamlit as st
 
-from data_loader import load_orderbird, load_aplano, load_wareneinsatz
+from data_loader import (
+    load_orderbird,
+    load_aplano,
+    load_wareneinsatz,
+    load_wareneingang,
+    load_verkaufsmengen,
+)
 from metrics import build_daily_report, monthly_summary, weekly_summary
 from exports import build_excel_report, build_pdf_report
+from warenverlust import berechne_warenverlust
 import storage
 
 storage.init_db()
@@ -283,3 +290,160 @@ else:
         "Falls die Spalten deines Exports nicht automatisch erkannt werden, trage die "
         "exakten Spaltennamen in `config.py` unter `COLUMN_OVERRIDES` ein."
     )
+
+st.divider()
+st.header("Warenwirtschaft & Warenverlust")
+st.caption(
+    "Zutatenliste, Rezepturen, Wareneingang und Inventur pflegen, um echten Warenverlust "
+    "(Schwund) je Zutat zu berechnen: tatsächlicher Verbrauch (Anfangsbestand + "
+    "Wareneingang − Endbestand) im Vergleich zum theoretischen Verbrauch laut Verkäufen "
+    "und Rezepturen."
+)
+
+with st.expander("Zutaten verwalten"):
+    zutaten_df = storage.list_zutaten()
+    with st.form("zutat_form", clear_on_submit=True):
+        zc1, zc2, zc3 = st.columns(3)
+        neuer_zutat_name = zc1.text_input("Name (z. B. Kaffeebohnen)")
+        neue_einheit = zc2.text_input("Einheit (z. B. kg, l, Stück)")
+        neuer_preis = zc3.number_input(
+            "Einkaufspreis pro Einheit (€)", min_value=0.0, step=0.1
+        )
+        if st.form_submit_button("Zutat speichern"):
+            if neuer_zutat_name and neue_einheit:
+                storage.add_zutat(neuer_zutat_name, neue_einheit, neuer_preis)
+                st.success(f"Zutat '{neuer_zutat_name}' gespeichert.")
+                st.rerun()
+            else:
+                st.warning("Name und Einheit sind Pflichtfelder.")
+
+    if not zutaten_df.empty:
+        st.dataframe(zutaten_df, use_container_width=True)
+        loesch_zutat = st.selectbox(
+            "Zutat löschen", ["(keine Auswahl)"] + zutaten_df["name"].tolist()
+        )
+        if loesch_zutat != "(keine Auswahl)" and st.button("Ausgewählte Zutat löschen"):
+            storage.delete_zutat(loesch_zutat)
+            st.success(f"Zutat '{loesch_zutat}' gelöscht.")
+            st.rerun()
+    else:
+        st.info("Noch keine Zutaten angelegt.")
+
+with st.expander("Rezepturen verwalten"):
+    zutaten_df = storage.list_zutaten()
+    if zutaten_df.empty:
+        st.info("Bitte zuerst mindestens eine Zutat unter 'Zutaten verwalten' anlegen.")
+    else:
+        with st.form("rezeptur_form", clear_on_submit=True):
+            rc1, rc2, rc3 = st.columns(3)
+            produkt_name = rc1.text_input(
+                "Produkt (Name wie im Orderbird-Export, z. B. 'Cappuccino')"
+            )
+            zutat_wahl = rc2.selectbox("Zutat", zutaten_df["name"].tolist())
+            menge_pro_einheit = rc3.number_input(
+                "Menge pro verkaufter Einheit", min_value=0.0, step=0.01, format="%.3f"
+            )
+            if st.form_submit_button("Zeile zur Rezeptur hinzufügen"):
+                if produkt_name:
+                    storage.add_rezeptur_zeile(produkt_name, zutat_wahl, menge_pro_einheit)
+                    st.success(f"'{zutat_wahl}' zur Rezeptur von '{produkt_name}' hinzugefügt.")
+                    st.rerun()
+                else:
+                    st.warning("Produktname ist ein Pflichtfeld.")
+
+        rezepturen_df = storage.list_rezepturen()
+        if not rezepturen_df.empty:
+            st.dataframe(rezepturen_df, use_container_width=True)
+            rezeptur_optionen = {
+                f"#{zeile.id}: {zeile.produkt} – {zeile.zutat} ({zeile.menge_pro_einheit})": zeile.id
+                for zeile in rezepturen_df.itertuples()
+            }
+            rezeptur_auswahl = st.selectbox(
+                "Zeile löschen", ["(keine Auswahl)"] + list(rezeptur_optionen.keys())
+            )
+            if rezeptur_auswahl != "(keine Auswahl)" and st.button(
+                "Ausgewählte Rezeptur-Zeile löschen"
+            ):
+                storage.delete_rezeptur_zeile(rezeptur_optionen[rezeptur_auswahl])
+                st.success("Zeile gelöscht.")
+                st.rerun()
+        else:
+            st.info("Noch keine Rezepturen hinterlegt.")
+
+with st.expander("Wareneingang & Verkaufsmengen hochladen"):
+    wc1, wc2 = st.columns(2)
+    with wc1:
+        wareneingang_file = st.file_uploader(
+            "Wareneingang (CSV: Datum, Zutat, Menge, Preis)",
+            type=["csv"],
+            key="wareneingang_upload",
+        )
+        if wareneingang_file:
+            try:
+                storage.save_wareneingang(load_wareneingang(wareneingang_file))
+                st.success("Wareneingang gespeichert.")
+            except ValueError as e:
+                st.error(str(e))
+    with wc2:
+        verkaufsmengen_file = st.file_uploader(
+            "Verkaufsmengen (CSV: Datum, Produkt, Menge) – aus Orderbirds "
+            "Umsatzanalyse-Export (MY orderbird → Berichte → Umsatzanalyse → CSV)",
+            type=["csv"],
+            key="verkaufsmengen_upload",
+        )
+        if verkaufsmengen_file:
+            try:
+                storage.save_verkaufsmengen(load_verkaufsmengen(verkaufsmengen_file))
+                st.success("Verkaufsmengen gespeichert.")
+            except ValueError as e:
+                st.error(str(e))
+
+with st.expander("Inventur eintragen"):
+    zutaten_df = storage.list_zutaten()
+    if zutaten_df.empty:
+        st.info("Bitte zuerst mindestens eine Zutat unter 'Zutaten verwalten' anlegen.")
+    else:
+        with st.form("inventur_form"):
+            inventur_datum = st.date_input("Stichtag der Zählung")
+            bestand_werte = {}
+            for zeile in zutaten_df.itertuples():
+                bestand_werte[zeile.name] = st.number_input(
+                    f"{zeile.name} ({zeile.einheit})",
+                    min_value=0.0,
+                    step=0.1,
+                    key=f"inventur_{zeile.name}",
+                )
+            if st.form_submit_button("Inventur speichern"):
+                for zutat, bestand in bestand_werte.items():
+                    storage.save_inventur_zeile(pd.Timestamp(inventur_datum), zutat, bestand)
+                st.success(f"Inventur zum {inventur_datum} gespeichert.")
+                st.rerun()
+
+    inventur_df = storage.load_inventur()
+    if not inventur_df.empty:
+        st.caption("Bisher erfasste Stichtage:")
+        st.dataframe(
+            inventur_df.pivot(index="datum", columns="zutat", values="bestand"),
+            use_container_width=True,
+        )
+
+st.subheader("Warenverlust")
+warenverlust_ergebnis = berechne_warenverlust(
+    storage.list_zutaten(),
+    storage.list_rezepturen(),
+    storage.load_wareneingang(),
+    storage.load_inventur(),
+    storage.load_verkaufsmengen(),
+)
+if not warenverlust_ergebnis["ok"]:
+    st.info(warenverlust_ergebnis["grund"])
+else:
+    st.caption(
+        f"Zeitraum: {warenverlust_ergebnis['datum_von'].strftime('%d.%m.%Y')} – "
+        f"{warenverlust_ergebnis['datum_bis'].strftime('%d.%m.%Y')} "
+        "(zwischen den letzten zwei Inventur-Stichtagen)"
+    )
+    warenverlust_tabelle = warenverlust_ergebnis["tabelle"]
+    st.dataframe(warenverlust_tabelle, use_container_width=True)
+    gesamtverlust_euro = warenverlust_tabelle["warenverlust_euro"].sum(skipna=True)
+    st.metric("Warenverlust gesamt im Zeitraum (€)", f"{gesamtverlust_euro:,.2f} €")

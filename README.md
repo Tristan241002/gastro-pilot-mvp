@@ -95,6 +95,38 @@ Tage, ältere Tage bleiben erhalten.
   des Ordners, nicht am Code. Lege den Ordner in diesem Fall lokal (nicht
   cloud-synchronisiert) ab, oder schließe ihn von der Synchronisation aus.
 
+## Warenwirtschaft & Warenverlust
+
+Unten im Dashboard gibt es einen eigenen Bereich, der zeigt, ob und wo Ware verloren
+geht (Schwund, großzügige Portionen, Fehlbuchungen o. Ä.) – auf Zutatenebene, nicht nur
+als grobe Wareneinsatzquote:
+
+1. **Zutaten verwalten**: Rohstoffe anlegen (Name, Einheit wie kg/l/Stück, Einkaufspreis
+   pro Einheit).
+2. **Rezepturen verwalten**: pro verkauftem Produkt hinterlegen, welche Zutaten in
+   welcher Menge hineingehen (z. B. Cappuccino = 0,018 kg Kaffeebohnen + 0,15 l Milch).
+   Der Produktname muss zu den Produktnamen aus dem Verkaufsmengen-Export passen.
+3. **Wareneingang hochladen**: CSV mit deinen Lieferungen (Spalten Datum, Zutat, Menge,
+   Gesamtpreis) – trage sie aus deinen Lieferantenrechnungen ein, ähnlich wie beim
+   Wareneinsatz-Import.
+4. **Verkaufsmengen hochladen**: CSV mit verkaufter Stückzahl je Produkt und Tag. Kommt
+   aus Orderbird: MY orderbird → Berichte → Umsatzanalyse → "Detaillierte
+   Umsatzaufteilung" als CSV exportieren.
+5. **Inventur eintragen**: an einem Stichtag den Bestand jeder Zutat eintippen (z. B.
+   einmal am Monatsanfang, einmal am Monatsende). Wichtig: **ohne mindestens zwei
+   Zähltermine kann kein Warenverlust berechnet werden** – das ist keine
+   Programm-Einschränkung, sondern folgt zwangsläufig aus der Rechnung selbst.
+
+Der Warenverlust wird für den Zeitraum zwischen den beiden letzten Inventur-Stichtagen
+berechnet: tatsächlicher Verbrauch (Anfangsbestand + Wareneingang − Endbestand) minus
+theoretischer Verbrauch (verkaufte Menge je Produkt × Rezeptur). Die Differenz ist der
+Warenverlust je Zutat, in Menge und (mit hinterlegtem Einkaufspreis) in Euro.
+
+Zum Ausprobieren mit Beispieldaten: einmalig `python3 seed_demo_warenwirtschaft.py`
+ausführen (legt Beispiel-Zutaten, -Rezepturen und zwei Inventur-Stichtage an), dann im
+Dashboard `sample_data/wareneingang_sample.csv` und `sample_data/verkaufsmengen_sample.csv`
+hochladen.
+
 ## Dateien
 
 | Datei | Zweck |
@@ -102,10 +134,12 @@ Tage, ältere Tage bleiben erhalten.
 | `data_loader.py` | Lädt und normalisiert die CSV-Exporte |
 | `metrics.py` | Berechnet Kennzahlen und Empfehlungen |
 | `exports.py` | Baut den Excel- und PDF-Export |
-| `storage.py` | Speichert/lädt Rohdaten aus `gastro_pilot.db` (SQLite) |
+| `storage.py` | Speichert/lädt alle Daten aus `gastro_pilot.db` (SQLite) |
+| `warenverlust.py` | Berechnet den Warenverlust je Zutat |
 | `app.py` | Streamlit-Dashboard (Oberfläche) |
 | `config.py` | Fixkosten, Schwellenwerte, Spalten-Overrides |
 | `test_run.py` | Prüft Loader + Metriken ohne Streamlit (`python3 test_run.py`) |
+| `seed_demo_warenwirtschaft.py` | Befüllt die Warenwirtschaft mit Beispieldaten (nur zum Testen) |
 | `sample_data/` | Beispieldaten zum Ausprobieren |
 
 ## Nächste Ausbauschritte
@@ -116,3 +150,5 @@ Sobald sich im eigenen Café zeigt, dass die Kennzahlen echten Mehrwert bringen:
    beantwortet – Kernidee aus dem Konzeptdokument, Abschnitt 4.3
 2. Aplano Pro-Tarif (API-Schnittstelle) statt manuellem CSV-Export anbinden, danach bei
    orderbird wegen einer Partner-API anfragen (siehe Konzeptdokument, Abschnitt 5 und 9)
+3. Prüfen, ob Orderbirds eigenes Warenwirtschafts-Modul ("SimpleOrder") noch existiert –
+   könnte Wareneingang/Rezepturen/Inventur ggf. direkt mitliefern statt manueller Pflege
