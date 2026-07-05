@@ -15,12 +15,32 @@ from typing import Iterable
 
 import pandas as pd
 
+from config import (
+    FIXED_COSTS_MONTHLY,
+    GESCHAEFTSFUEHRUNG,
+    PERSONALKOSTENQUOTE_WARNUNG,
+    WARENEINSATZQUOTE_WARNUNG,
+)
+
 DB_PATH = Path(__file__).parent / "gastro_pilot.db"
 
 _TABELLEN = {
     "umsatz": ["umsatz"],
     "personal": ["personalkosten_variabel", "stunden"],
     "wareneinsatz": ["wareneinsatz"],
+}
+
+# Startwerte für den Einstellungsbereich im Dashboard – nur relevant, solange noch keine
+# eigenen Werte gespeichert wurden. Kommen als sinnvolle Vorbelegung aus config.py.
+DEFAULT_SETTINGS = {
+    "miete": FIXED_COSTS_MONTHLY.get("Miete", 0.0),
+    "energie": FIXED_COSTS_MONTHLY.get("Energie", 0.0),
+    "versicherungen": FIXED_COSTS_MONTHLY.get("Versicherungen", 0.0),
+    "software_abos": FIXED_COSTS_MONTHLY.get("Software/Abos", 0.0),
+    "gf_anzahl": float(GESCHAEFTSFUEHRUNG["Anzahl"]),
+    "gf_fixgehalt": GESCHAEFTSFUEHRUNG["Fixgehalt_pro_Person_Monat"],
+    "personalkostenquote_warnung": PERSONALKOSTENQUOTE_WARNUNG,
+    "wareneinsatzquote_warnung": WARENEINSATZQUOTE_WARNUNG,
 }
 
 
@@ -37,6 +57,9 @@ def init_db() -> None:
         )
         conn.execute(
             "CREATE TABLE IF NOT EXISTS wareneinsatz (datum TEXT PRIMARY KEY, wareneinsatz REAL)"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL)"
         )
 
 
@@ -100,8 +123,28 @@ def load_wareneinsatz() -> pd.DataFrame:
     return _load("wareneinsatz")
 
 
+def save_settings(settings: dict) -> None:
+    """Speichert Fixkosten/Gehälter/Warnschwellen aus dem Einstellungsbereich im Dashboard."""
+    with _connect() as conn:
+        for key, value in settings.items():
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, float(value)),
+            )
+
+
+def load_settings() -> dict:
+    """Lädt gespeicherte Einstellungen, ergänzt fehlende Werte mit den Vorgaben aus config.py."""
+    with _connect() as conn:
+        rows = conn.execute("SELECT key, value FROM settings").fetchall()
+    gespeichert = {key: value for key, value in rows}
+    return {**DEFAULT_SETTINGS, **gespeichert}
+
+
 def reset_all() -> None:
-    """Löscht alle gespeicherten Daten unwiderruflich (z. B. für einen sauberen Neustart)."""
+    """Löscht alle gespeicherten Rohdaten (Umsatz/Personal/Wareneinsatz) unwiderruflich.
+    Gespeicherte Einstellungen (Fixkosten, Gehälter, Warnschwellen) bleiben davon unberührt."""
     with _connect() as conn:
         for table in _TABELLEN:
             conn.execute(f"DELETE FROM {table}")

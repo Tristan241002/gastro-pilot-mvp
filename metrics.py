@@ -24,40 +24,36 @@ def _tage_im_monat(datum: pd.Timestamp) -> int:
     return calendar.monthrange(datum.year, datum.month)[1]
 
 
-def _fixkosten_pro_tag(datum: pd.Timestamp) -> float:
+def _fixkosten_pro_tag(datum: pd.Timestamp, fixkosten_monatlich: float) -> float:
     """Verteilt die monatlichen Fixkosten (ohne Personal) gleichmäßig auf die Tage
     des jeweiligen Monats."""
-    monatssumme = sum(FIXED_COSTS_MONTHLY.values())
-    return monatssumme / _tage_im_monat(datum)
+    return fixkosten_monatlich / _tage_im_monat(datum)
 
 
-def _geschaeftsfuehrung_pro_tag(datum: pd.Timestamp) -> float:
+def _geschaeftsfuehrung_pro_tag(datum: pd.Timestamp, gf_summe_monatlich: float) -> float:
     """Verteilt die Fixgehälter der Geschäftsführung gleichmäßig auf die Tage
-    des jeweiligen Monats (steht nicht im Aplano-Export, siehe config.py)."""
-    monatssumme = (
-        GESCHAEFTSFUEHRUNG["Anzahl"] * GESCHAEFTSFUEHRUNG["Fixgehalt_pro_Person_Monat"]
-    )
-    return monatssumme / _tage_im_monat(datum)
+    des jeweiligen Monats (steht nicht im Aplano-Export)."""
+    return gf_summe_monatlich / _tage_im_monat(datum)
 
 
-def _empfehlung_personalkosten(quote: Optional[float]) -> str:
+def _empfehlung_personalkosten(quote: Optional[float], schwelle: float) -> str:
     if quote is None or pd.isna(quote):
         return "Kein Umsatz erfasst – Tag prüfen."
-    if quote > PERSONALKOSTENQUOTE_WARNUNG:
+    if quote > schwelle:
         return (
             f"Personalkostenquote {quote:.0%} liegt über der Schwelle von "
-            f"{PERSONALKOSTENQUOTE_WARNUNG:.0%} – Personaleinsatz an diesem Tag prüfen."
+            f"{schwelle:.0%} – Personaleinsatz an diesem Tag prüfen."
         )
     return "Im grünen Bereich."
 
 
-def _empfehlung_wareneinsatz(quote: Optional[float]) -> str:
+def _empfehlung_wareneinsatz(quote: Optional[float], schwelle: float) -> str:
     if quote is None or pd.isna(quote):
         return ""
-    if quote > WARENEINSATZQUOTE_WARNUNG:
+    if quote > schwelle:
         return (
             f"Wareneinsatzquote {quote:.0%} liegt über der Schwelle von "
-            f"{WARENEINSATZQUOTE_WARNUNG:.0%} – Einkauf/Rezepturen/Preise prüfen."
+            f"{schwelle:.0%} – Einkauf/Rezepturen/Preise prüfen."
         )
     return "Im grünen Bereich."
 
@@ -66,20 +62,30 @@ def build_daily_report(
     umsatz_df: pd.DataFrame,
     personal_df: pd.DataFrame,
     wareneinsatz_df: Optional[pd.DataFrame] = None,
+    fixkosten_monatlich: float = sum(FIXED_COSTS_MONTHLY.values()),
+    gf_summe_monatlich: float = GESCHAEFTSFUEHRUNG["Anzahl"] * GESCHAEFTSFUEHRUNG["Fixgehalt_pro_Person_Monat"],
+    personalkostenquote_warnung: float = PERSONALKOSTENQUOTE_WARNUNG,
+    wareneinsatzquote_warnung: float = WARENEINSATZQUOTE_WARNUNG,
 ) -> pd.DataFrame:
     """Führt Umsatz-, Personal- und (optional) Wareneinsatzdaten pro Tag zusammen und
     berechnet Kennzahlen. Die Fixgehälter der Geschäftsführung werden hier zu den
     variablen Aplano-Personalkosten addiert, damit die Personalkostenquote die
-    tatsächlichen gesamten Personalkosten abbildet."""
+    tatsächlichen gesamten Personalkosten abbildet. Fixkosten, Geschäftsführer-Gehälter
+    und Warnschwellen kommen standardmäßig aus config.py, können aber (z. B. über den
+    Einstellungsbereich im Dashboard) überschrieben werden."""
     merged = pd.merge(umsatz_df, personal_df, on="datum", how="outer").sort_values("datum")
     merged["umsatz"] = merged["umsatz"].fillna(0.0)
     merged["personalkosten_variabel"] = merged["personalkosten_variabel"].fillna(0.0)
 
-    merged["personalkosten_geschaeftsfuehrung"] = merged["datum"].apply(_geschaeftsfuehrung_pro_tag)
+    merged["personalkosten_geschaeftsfuehrung"] = merged["datum"].apply(
+        lambda d: _geschaeftsfuehrung_pro_tag(d, gf_summe_monatlich)
+    )
     merged["personalkosten"] = (
         merged["personalkosten_variabel"] + merged["personalkosten_geschaeftsfuehrung"]
     )
-    merged["fixkosten"] = merged["datum"].apply(_fixkosten_pro_tag)
+    merged["fixkosten"] = merged["datum"].apply(
+        lambda d: _fixkosten_pro_tag(d, fixkosten_monatlich)
+    )
 
     if wareneinsatz_df is not None:
         merged = pd.merge(merged, wareneinsatz_df, on="datum", how="left")
@@ -96,8 +102,12 @@ def build_daily_report(
     merged["ergebnis_vor_weiteren_kosten"] = (
         merged["umsatz"] - merged["personalkosten"] - merged["fixkosten"] - merged["wareneinsatz"]
     )
-    merged["empfehlung"] = merged["personalkostenquote"].apply(_empfehlung_personalkosten)
-    merged["empfehlung_wareneinsatz"] = merged["wareneinsatzquote"].apply(_empfehlung_wareneinsatz)
+    merged["empfehlung"] = merged["personalkostenquote"].apply(
+        lambda q: _empfehlung_personalkosten(q, personalkostenquote_warnung)
+    )
+    merged["empfehlung_wareneinsatz"] = merged["wareneinsatzquote"].apply(
+        lambda q: _empfehlung_wareneinsatz(q, wareneinsatzquote_warnung)
+    )
     return merged.reset_index(drop=True)
 
 

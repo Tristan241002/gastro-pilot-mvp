@@ -10,9 +10,10 @@ jeden Tag und zeigt einen Vorwochenvergleich. Warnschwellen sind bewusst regelba
 ## Wichtiger Hinweis zur Personalkosten-Berechnung
 
 Aplano trackt nur stundenbasiert bezahlte Mitarbeiter. Fixgehälter (z. B. für
-Geschäftsführung) tauchen dort nicht auf. Deshalb werden sie separat in `config.py`
-unter `GESCHAEFTSFUEHRUNG` hinterlegt und in `metrics.py` zu den Aplano-Personalkosten
-addiert – nur so bildet die Personalkostenquote die tatsächlichen Gesamt-Personalkosten ab.
+Geschäftsführung) tauchen dort nicht auf. Deshalb werden sie separat hinterlegt (siehe
+"Fixkosten, Gehälter & Warnschwellen anpassen") und in `metrics.py` zu den
+Aplano-Personalkosten addiert – nur so bildet die Personalkostenquote die tatsächlichen
+Gesamt-Personalkosten ab.
 
 ## Installation
 
@@ -52,12 +53,16 @@ exakten Spaltennamen in `config.py` unter `COLUMN_OVERRIDES` ein.
 
 ## Fixkosten, Gehälter & Warnschwellen anpassen
 
-Alles steht in `config.py`:
+Im Dashboard oben unter "Einstellungen (Fixkosten, Gehälter, Warnschwellen)" ausklappen,
+Werte anpassen und auf "Einstellungen speichern" klicken. Kein Code-Ändern mehr nötig:
 
-- `FIXED_COSTS_MONTHLY`: deine monatlichen Fixkosten ohne Personal (Miete, Energie, …), Summe aktuell 3.000 €
-- `GESCHAEFTSFUEHRUNG`: Anzahl und Fixgehalt pro Geschäftsführer/in (aktuell 3 x 2.500 €)
-- `PERSONALKOSTENQUOTE_WARNUNG`: ab welcher Quote gewarnt werden soll (Standard: 35 %)
-- `WARENEINSATZQUOTE_WARNUNG`: ab welcher Quote gewarnt werden soll (Standard: 30 %)
+- Monatliche Fixkosten ohne Personal (Miete, Energie, Versicherungen, Software/Abos)
+- Anzahl und Fixgehalt pro Geschäftsführer/in
+- Warnschwellen für Personalkostenquote und Wareneinsatzquote (in %)
+
+Die Werte landen in `gastro_pilot.db` und gelten ab dem nächsten Neuladen der Seite.
+`config.py` liefert nur noch die Vorbelegung beim allerersten Start (bevor eigene Werte
+gespeichert wurden) sowie die Fallback-Werte für `test_run.py`.
 
 ## Export (PDF / Excel)
 
@@ -77,8 +82,10 @@ Jeder hochgeladene Export wird automatisch in einer lokalen Datei `gastro_pilot.
 hochladen – nur neue Tage ergänzen. Neue Uploads überschreiben nur die betroffenen
 Tage, ältere Tage bleiben erhalten.
 
-- Zum Löschen aller gespeicherten Daten: im Dashboard unter "Aktuelle Einstellungen
-  (config.py)" die Checkbox bestätigen und auf "Gespeicherte Daten löschen" klicken.
+- Zum Löschen aller gespeicherten Rohdaten (Umsatz/Personal/Wareneinsatz): im Dashboard
+  unter "Einstellungen" die Checkbox bestätigen und auf "Gespeicherte Daten löschen"
+  klicken. Gespeicherte Einstellungen (Fixkosten, Gehälter, Warnschwellen) bleiben dabei
+  erhalten.
 - **Wichtig für Streamlit Cloud:** Dort ist das Dateisystem nicht dauerhaft – bei jedem
   Neustart/Redeploy der App geht `gastro_pilot.db` verloren. Echte Persistenz über
   Wochen hinweg funktioniert nur, wenn du die App lokal ausführst
@@ -105,8 +112,7 @@ Tage, ältere Tage bleiben erhalten.
 
 Sobald sich im eigenen Café zeigt, dass die Kennzahlen echten Mehrwert bringen:
 
-1. Einstellungsbereich direkt im Dashboard (Fixkosten, Gehälter, Schwellenwerte ohne Code ändern)
-2. Chat-Funktion mit KI-Anbindung (z. B. Anthropic API), die Fragen zu den eigenen Zahlen
+1. Chat-Funktion mit KI-Anbindung (z. B. Anthropic API), die Fragen zu den eigenen Zahlen
    beantwortet – Kernidee aus dem Konzeptdokument, Abschnitt 4.3
-3. Aplano Pro-Tarif (API-Schnittstelle) statt manuellem CSV-Export anbinden, danach bei
+2. Aplano Pro-Tarif (API-Schnittstelle) statt manuellem CSV-Export anbinden, danach bei
    orderbird wegen einer Partner-API anfragen (siehe Konzeptdokument, Abschnitt 5 und 9)

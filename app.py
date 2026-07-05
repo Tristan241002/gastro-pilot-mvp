@@ -16,12 +16,6 @@ from data_loader import load_orderbird, load_aplano, load_wareneinsatz
 from metrics import build_daily_report, monthly_summary, weekly_summary
 from exports import build_excel_report, build_pdf_report
 import storage
-from config import (
-    FIXED_COSTS_MONTHLY,
-    GESCHAEFTSFUEHRUNG,
-    PERSONALKOSTENQUOTE_WARNUNG,
-    WARENEINSATZQUOTE_WARNUNG,
-)
 
 storage.init_db()
 
@@ -46,22 +40,100 @@ with col3:
         "Wareneinsatz-Export (CSV, optional)", type=["csv"]
     )
 
-with st.expander("Aktuelle Einstellungen (config.py)"):
-    st.write("Monatliche Fixkosten (ohne Personal):", FIXED_COSTS_MONTHLY)
-    gf_summe = GESCHAEFTSFUEHRUNG["Anzahl"] * GESCHAEFTSFUEHRUNG["Fixgehalt_pro_Person_Monat"]
-    st.write(
-        f"Geschäftsführung: {GESCHAEFTSFUEHRUNG['Anzahl']} x "
-        f"{GESCHAEFTSFUEHRUNG['Fixgehalt_pro_Person_Monat']:,.2f} € = {gf_summe:,.2f} € / Monat"
+gespeicherte_settings = storage.load_settings()
+
+with st.expander("Einstellungen (Fixkosten, Gehälter, Warnschwellen)"):
+    st.caption(
+        "Wird lokal in `gastro_pilot.db` gespeichert und bei jedem Start automatisch "
+        "geladen – kein Bearbeiten von config.py nötig."
     )
-    st.write("Warnschwelle Personalkostenquote:", f"{PERSONALKOSTENQUOTE_WARNUNG:.0%}")
-    st.write("Warnschwelle Wareneinsatzquote:", f"{WARENEINSATZQUOTE_WARNUNG:.0%}")
+    with st.form("einstellungen_form"):
+        st.markdown("**Monatliche Fixkosten (ohne Personal)**")
+        c1, c2, c3, c4 = st.columns(4)
+        miete = c1.number_input(
+            "Miete (€)", min_value=0.0, value=float(gespeicherte_settings["miete"]), step=50.0
+        )
+        energie = c2.number_input(
+            "Energie (€)", min_value=0.0, value=float(gespeicherte_settings["energie"]), step=50.0
+        )
+        versicherungen = c3.number_input(
+            "Versicherungen (€)",
+            min_value=0.0,
+            value=float(gespeicherte_settings["versicherungen"]),
+            step=50.0,
+        )
+        software_abos = c4.number_input(
+            "Software/Abos (€)",
+            min_value=0.0,
+            value=float(gespeicherte_settings["software_abos"]),
+            step=50.0,
+        )
+
+        st.markdown("**Geschäftsführung (Fixgehalt, nicht in Aplano erfasst)**")
+        c5, c6 = st.columns(2)
+        gf_anzahl = c5.number_input(
+            "Anzahl Geschäftsführer/innen",
+            min_value=0,
+            value=int(gespeicherte_settings["gf_anzahl"]),
+            step=1,
+        )
+        gf_fixgehalt = c6.number_input(
+            "Fixgehalt pro Person/Monat (€)",
+            min_value=0.0,
+            value=float(gespeicherte_settings["gf_fixgehalt"]),
+            step=100.0,
+        )
+
+        st.markdown("**Warnschwellen**")
+        c7, c8 = st.columns(2)
+        personalkostenquote_warnung_pct = c7.number_input(
+            "Personalkostenquote-Warnung (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=float(gespeicherte_settings["personalkostenquote_warnung"]) * 100,
+            step=1.0,
+        )
+        wareneinsatzquote_warnung_pct = c8.number_input(
+            "Wareneinsatzquote-Warnung (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=float(gespeicherte_settings["wareneinsatzquote_warnung"]) * 100,
+            step=1.0,
+        )
+
+        if st.form_submit_button("Einstellungen speichern"):
+            storage.save_settings(
+                {
+                    "miete": miete,
+                    "energie": energie,
+                    "versicherungen": versicherungen,
+                    "software_abos": software_abos,
+                    "gf_anzahl": gf_anzahl,
+                    "gf_fixgehalt": gf_fixgehalt,
+                    "personalkostenquote_warnung": personalkostenquote_warnung_pct / 100,
+                    "wareneinsatzquote_warnung": wareneinsatzquote_warnung_pct / 100,
+                }
+            )
+            st.success("Einstellungen gespeichert.")
+            st.rerun()
+
     st.divider()
     st.caption("Gespeicherte Daten (gastro_pilot.db) unwiderruflich löschen:")
     zuruecksetzen_bestaetigt = st.checkbox("Ja, ich will alle gespeicherten Daten löschen")
     if st.button("Gespeicherte Daten löschen", disabled=not zuruecksetzen_bestaetigt):
         storage.reset_all()
-        st.success("Gespeicherte Daten wurden gelöscht.")
+        st.success("Gespeicherte Daten (Umsatz/Personal/Wareneinsatz) wurden gelöscht.")
         st.rerun()
+
+fixkosten_monatlich = (
+    gespeicherte_settings["miete"]
+    + gespeicherte_settings["energie"]
+    + gespeicherte_settings["versicherungen"]
+    + gespeicherte_settings["software_abos"]
+)
+gf_summe_monatlich = gespeicherte_settings["gf_anzahl"] * gespeicherte_settings["gf_fixgehalt"]
+personalkostenquote_warnung = gespeicherte_settings["personalkostenquote_warnung"]
+wareneinsatzquote_warnung = gespeicherte_settings["wareneinsatzquote_warnung"]
 
 try:
     if orderbird_file:
@@ -80,7 +152,15 @@ wareneinsatz_df = storage.load_wareneinsatz()
 wareneinsatz_df = wareneinsatz_df if not wareneinsatz_df.empty else None
 
 if not umsatz_df.empty and not personal_df.empty:
-    daily = build_daily_report(umsatz_df, personal_df, wareneinsatz_df)
+    daily = build_daily_report(
+        umsatz_df,
+        personal_df,
+        wareneinsatz_df,
+        fixkosten_monatlich=fixkosten_monatlich,
+        gf_summe_monatlich=gf_summe_monatlich,
+        personalkostenquote_warnung=personalkostenquote_warnung,
+        wareneinsatzquote_warnung=wareneinsatzquote_warnung,
+    )
 
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("Umsatz gesamt", f"{daily['umsatz'].sum():,.2f} €")
@@ -151,7 +231,7 @@ if not umsatz_df.empty and not personal_df.empty:
         st.subheader("Wareneinsatzquote im Zeitverlauf")
         st.line_chart(daily.set_index("datum")[["wareneinsatzquote"]])
 
-    warnungen = daily[daily["personalkostenquote"] > PERSONALKOSTENQUOTE_WARNUNG]
+    warnungen = daily[daily["personalkostenquote"] > personalkostenquote_warnung]
     if not warnungen.empty:
         st.subheader("Tage mit Warnung: Personalkostenquote")
         st.dataframe(
@@ -159,7 +239,7 @@ if not umsatz_df.empty and not personal_df.empty:
         )
 
     if wareneinsatz_df is not None:
-        we_warnungen = daily[daily["wareneinsatzquote"] > WARENEINSATZQUOTE_WARNUNG]
+        we_warnungen = daily[daily["wareneinsatzquote"] > wareneinsatzquote_warnung]
         if not we_warnungen.empty:
             st.subheader("Tage mit Warnung: Wareneinsatzquote")
             st.dataframe(
