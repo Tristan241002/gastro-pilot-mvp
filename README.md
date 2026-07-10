@@ -95,6 +95,59 @@ Tage, ältere Tage bleiben erhalten.
   des Ordners, nicht am Code. Lege den Ordner in diesem Fall lokal (nicht
   cloud-synchronisiert) ab, oder schließe ihn von der Synchronisation aus.
 
+## Automatischer E-Mail-Import (Umsatz ohne manuellen Upload)
+
+Statt den Orderbird-Export jedes Mal manuell herunterzuladen und hochzuladen, kann
+Gastro Pilot ein E-Mail-Postfach automatisch auf neue Berichte prüfen und sie selbst
+einlesen. Das funktioniert, weil Orderbird unter "MY orderbird" → Einstellungen →
+DATEV-Details bereits heute einen automatischen monatlichen Report-Versand an eine
+frei wählbare E-Mail-Adresse anbietet (ursprünglich für den Steuerberater gedacht,
+funktioniert aber mit jeder Adresse). Trägt man dort eine eigene Gastro-Pilot-Adresse
+ein, kommen die Daten von selbst an.
+
+**⚠️ Bevor du das aktivierst:** Dieses Repository ist aktuell öffentlich einsehbar.
+Der automatische Import schreibt echte Umsatzdaten in `gastro_pilot.db` und committet
+sie zurück ins Repo, damit sie den Streamlit-Cloud-Neustart überleben. Öffentlich
+einsehbare echte Umsatzzahlen willst du wahrscheinlich nicht. Stelle das Repository
+deshalb zuerst auf privat (GitHub → Repository → Settings → ganz unten "Danger Zone" →
+"Change visibility" → "Make private"). Streamlit Community Cloud kann auch private
+Repos deployen, das funktioniert weiterhin ohne Änderung an der App selbst.
+
+### Einrichtung
+
+1. **Repo auf privat stellen** (siehe Warnung oben) – einmalig, betrifft auch alle
+   künftigen echten Daten in diesem Repo, nicht nur den E-Mail-Import.
+2. **Eigenes E-Mail-Postfach anlegen**, z. B. ein neues, kostenloses Gmail-Konto nur für
+   diesen Zweck (nicht dein privates Postfach verwenden).
+3. In diesem Gmail-Konto **2-Faktor-Authentifizierung aktivieren** und darüber ein
+   **App-Passwort** erzeugen (Google-Kontoeinstellungen → Sicherheit → App-Passwörter).
+   Das ist ein separates Passwort nur für diesen automatisierten Zugriff, nicht dein
+   normales Login-Passwort.
+4. In GitHub im Repository unter **Settings → Secrets and variables → Actions → New
+   repository secret** drei Secrets anlegen:
+   - `EMAIL_ADDRESS` – die neue Gmail-Adresse
+   - `EMAIL_APP_PASSWORD` – das eben erzeugte App-Passwort
+   - `EMAIL_IMAP_SERVER` – `imap.gmail.com`
+5. In **MY orderbird** → Einstellungen → DATEV-Details die neue Gmail-Adresse als
+   Empfänger eintragen.
+6. Fertig – der Zeitplan-Job (`.github/workflows/fetch_orderbird_email.yml`) läuft ab
+   jetzt täglich automatisch. Zum sofortigen Testen: im GitHub-Repo oben auf "Actions" →
+   "Orderbird E-Mail automatisch abholen" → "Run workflow".
+
+### Wichtige Einschränkung (Stand jetzt)
+
+Bisher ist nur der **monatliche DATEV-Bericht** nachweislich automatisch per E-Mail
+verschickbar – ein Buchhaltungsformat, das primär für den Steuerberater gedacht ist und
+möglicherweise nicht exakt dieselben Spalten liefert wie der bisherige manuelle
+Umsatzanalyse-Export. Ob "MY orderbird" auch für die normale, tagesgenaue Umsatzanalyse
+einen automatischen Versand anbietet, ist noch nicht geprüft – das lohnt sich in den
+eigenen Kontoeinstellungen nachzuschauen. `email_import.py` versucht jede ankommende
+CSV-Datei mit dem bestehenden Orderbird-Loader einzulesen; gelingt das nicht (z. B. weil
+das Format abweicht), bleibt die Datei unverändert im Ordner `incoming/` liegen und wird
+nicht verworfen – der Loader kann dann anhand der echten Datei gezielt angepasst werden.
+Für Warenverlust/Verkaufsmengen und den Aplano-Personalimport ist der E-Mail-Weg noch
+nicht eingerichtet, dafür bleibt der manuelle Upload vorerst bestehen.
+
 ## Warenwirtschaft & Warenverlust
 
 Unten im Dashboard gibt es einen eigenen Bereich, der zeigt, ob und wo Ware verloren
@@ -138,6 +191,7 @@ hochladen.
 | `exports.py` | Baut den Excel- und PDF-Export |
 | `storage.py` | Speichert/lädt alle Daten aus `gastro_pilot.db` (SQLite) |
 | `warenverlust.py` | Berechnet den Warenverlust je Zutat |
+| `email_import.py` | Holt Orderbird-Berichte automatisch aus einem E-Mail-Postfach ab |
 | `app.py` | Streamlit-Dashboard (Oberfläche) |
 | `config.py` | Fixkosten, Schwellenwerte, Spalten-Overrides |
 | `test_run.py` | Prüft Loader + Metriken ohne Streamlit (`python3 test_run.py`) |
@@ -150,7 +204,8 @@ Sobald sich im eigenen Café zeigt, dass die Kennzahlen echten Mehrwert bringen:
 
 1. Chat-Funktion mit KI-Anbindung (z. B. Anthropic API), die Fragen zu den eigenen Zahlen
    beantwortet – Kernidee aus dem Konzeptdokument, Abschnitt 4.3
-2. Aplano Pro-Tarif (API-Schnittstelle) statt manuellem CSV-Export anbinden, danach bei
-   orderbird wegen einer Partner-API anfragen (siehe Konzeptdokument, Abschnitt 5 und 9)
+2. Aplano Pro-Tarif (API-Schnittstelle) statt manuellem CSV-Export anbinden; für Orderbird
+   den automatischen E-Mail-Import (siehe oben) auf die tagesgenaue Umsatzanalyse und
+   perspektivisch auf Verkaufsmengen ausweiten, statt nur auf den DATEV-Bericht
 3. Prüfen, ob Orderbirds eigenes Warenwirtschafts-Modul ("SimpleOrder") noch existiert –
    könnte Wareneingang/Rezepturen/Inventur ggf. direkt mitliefern statt manueller Pflege

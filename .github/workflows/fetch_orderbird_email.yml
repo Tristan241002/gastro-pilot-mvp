@@ -1,0 +1,38 @@
+name: Orderbird E-Mail automatisch abholen
+
+# Läuft täglich um 5:00 UTC (6/7 Uhr deutsche Zeit, je nach Sommer-/Winterzeit) und holt
+# neue Berichte aus dem hinterlegten E-Mail-Postfach ab (siehe email_import.py).
+# Über "Run workflow" oben rechts im Actions-Tab auch manuell zum Testen startbar.
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  fetch-email:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements.txt
+
+      - name: E-Mail abholen und verarbeiten
+        env:
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          EMAIL_IMAP_SERVER: ${{ secrets.EMAIL_IMAP_SERVER }}
+        run: python email_import.py
+
+      - name: Änderungen zurück ins Repo schreiben
+        run: |
+          git config user.name "gastro-pilot-bot"
+          git config user.email "bot@gastro-pilot.local"
+          git add gastro_pilot.db incoming
+          git diff --cached --quiet || git commit -m "Automatischer E-Mail-Import: neue Orderbird-Daten"
+          git push
